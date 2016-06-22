@@ -11,8 +11,7 @@ import org.elasticsearch.index.query.functionscore.ScoreFunctionParser;
 import org.elasticsearch.search.internal.SearchContext;
 
 import java.io.IOException;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Locale;
 
 /**
@@ -24,16 +23,11 @@ import java.util.Locale;
  *             "value" : 1.0,
  *             "factor" : 1.0,
  *             "modifier" : "NONE",
- *             "cond" : [
- *               {
- *                 "product" : "product_name_1",
+ *             "cond" :  {
+ *                 "fieldName" : "product",
+ *                 "fieldValues" : ["product_name_1"],
  *                 "value" : 5.0
- *               },
- *               {
- *                 "user" : "user_1",
- *                 "value" : 10.0
- *               }
- *             ]
+ *              }
  *         }
  *     }
  * </pre>
@@ -50,7 +44,7 @@ public class CondBoostFactorFunctionParser implements ScoreFunctionParser {
     @Override
     public ScoreFunction parse(QueryParseContext parseContext, XContentParser parser) throws IOException, QueryParsingException {
         String currentFieldName = null;
-        List<CondBoostEntry> condArray = new LinkedList<>();
+        CondBoostEntry condBoost = new CondBoostEntry();
         float defaultBoost = 1.0f;
         float boostFactor = 1.0f;
         CondBoostFactorFunction.Modifier modifier = CondBoostFactorFunction.Modifier.NONE;
@@ -58,9 +52,7 @@ public class CondBoostFactorFunctionParser implements ScoreFunctionParser {
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
-            } else if (token == XContentParser.Token.START_ARRAY) {
-                condArray = parseCondArray(parseContext, parser, currentFieldName);
-            } else if (token.isValue()) {
+            }else {
                 if (currentFieldName != null) {
                     switch (currentFieldName) {
                         case "value":
@@ -72,47 +64,60 @@ public class CondBoostFactorFunctionParser implements ScoreFunctionParser {
                         case "modifier":
                             modifier = CondBoostFactorFunction.Modifier.valueOf(parser.text().toUpperCase(Locale.ROOT));
                             break;
+                        case "cond":
+                            condBoost = parseCond(parseContext, parser, currentFieldName);
+                            break;
                         default:
                             throw new QueryParsingException(parseContext, NAMES[0] + " query does not support [" + currentFieldName + "]");
                     }
                 }
             }
         }
-        return new CondBoostFactorFunction(condArray, defaultBoost, boostFactor, modifier);
+        //if (true){
+            //throw new ElasticsearchException(condBoost.toString() + "," +  defaultBoost + "," + boostFactor  + "," + modifier);
+        //}
+        return new CondBoostFactorFunction(condBoost, defaultBoost, boostFactor, modifier);
     }
 
-    private List<CondBoostEntry> parseCondArray(QueryParseContext parseContext, XContentParser parser, String currentFieldName) throws IOException {
+    private CondBoostEntry parseCond(QueryParseContext parseContext, XContentParser parser, String currentFieldName) throws IOException {
         XContentParser.Token token;
-        List<CondBoostEntry> condArray = new LinkedList<>();
-        while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
-            if (token != XContentParser.Token.START_OBJECT) {
-                throw new QueryParsingException(parseContext, "malformed query, expected a "
-                        + XContentParser.Token.START_OBJECT + " while parsing cond boost array, but got a " + token);
+        CondBoostEntry entry = new CondBoostEntry();
+
+        while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
+            if (token == XContentParser.Token.FIELD_NAME) {
+                currentFieldName = parser.currentName();
             } else {
-                CondBoostEntry entry = new CondBoostEntry();
-                while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
-                    if (token == XContentParser.Token.FIELD_NAME) {
-                        currentFieldName = parser.currentName();
-                    } else {
-                        if ("value".equals(currentFieldName)) {
-                            entry.boost = parser.floatValue();
-                        } else {
-                            entry.fieldName = currentFieldName;
-                            entry.fieldValue = parser.text();
-                            // compute IndexFieldData from currentFieldName
-                            SearchContext searchContext = SearchContext.current();
-                            MappedFieldType mappedFieldType = searchContext.mapperService().fullName(currentFieldName);
-                            if (mappedFieldType == null) {
-                                throw new ElasticsearchException("unable to find field [" + currentFieldName + "]");
-                            }
-                            entry.ifd = searchContext.fieldData().getForField(mappedFieldType);
+                switch(currentFieldName){
+                    case ("value"):
+                        entry.boost = parser.floatValue();
+                        break;
+                    case ("fieldName"):
+                        // compute IndexFieldData from currentFieldName
+
+                        entry.fieldName = parser.text();
+                        SearchContext searchContext = SearchContext.current();
+                        MappedFieldType mappedFieldType = searchContext.mapperService().fullName(entry.fieldName);
+                        if (mappedFieldType == null) {
+                            throw new ElasticsearchException("unable to find field [" + entry.fieldName + "] " +  currentFieldName );
                         }
-                    }
+                        entry.ifd = searchContext.fieldData().getForField(mappedFieldType);
+                        break;
+                    case ("fieldValues"):
+                        HashSet<String> fieldValueList = new HashSet<String>();
+                        while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
+                            if (token.isValue()){
+                                String fieldValue = parser.text();
+                                fieldValueList.add(fieldValue);
+                            }
+                        }
+                        entry.fieldValueList = fieldValueList;
+                        break;
                 }
-                condArray.add(entry);
+
             }
         }
-        return condArray;
+
+        return entry;
     }
 
 }

@@ -4,6 +4,7 @@ import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilder;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -16,7 +17,7 @@ public class CondBoostFactorFunctionBuilder extends ScoreFunctionBuilder {
 
     private CondBoostFactorFunction.Modifier modifier = CondBoostFactorFunction.Modifier.NONE;
 
-    private List<CondBoostEntry> entryList = new LinkedList<>();
+    private CondBoostEntry entry = new CondBoostEntry();
 
     @Override
     public String getName() {
@@ -24,12 +25,11 @@ public class CondBoostFactorFunctionBuilder extends ScoreFunctionBuilder {
     }
 
     public CondBoostFactorFunctionBuilder condBoost(String fieldName,
-                                                    String fieldValue, float boost) {
-        CondBoostEntry entry = new CondBoostEntry();
+                                                    HashSet<String> fieldValueList, float boost) {
+        entry = new CondBoostEntry();
         entry.fieldName = fieldName;
-        entry.fieldValue = fieldValue;
+        entry.fieldValueList = fieldValueList;
         entry.boost = boost;
-        entryList.add(entry);
         return this;
     }
 
@@ -51,13 +51,10 @@ public class CondBoostFactorFunctionBuilder extends ScoreFunctionBuilder {
     @Override
     public void doXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject(getName());
-        if (entryList != null) {
-            builder.startArray("cond");
-            for (CondBoostEntry entry : entryList) {
-                entry.toXContent(builder, params);
-            }
-            builder.endArray();
-        }
+        //builder.startObject("cond");
+        entry.toXContent(builder, params);
+        //builder.endObject();
+
         if (value != null) {
             builder.field("value", value);
         }
