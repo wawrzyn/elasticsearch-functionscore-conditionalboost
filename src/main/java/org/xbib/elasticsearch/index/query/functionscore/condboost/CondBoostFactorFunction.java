@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public class CondBoostFactorFunction extends ScoreFunction {
 
-    private final List<CondBoostEntry> condBoostEntryList;
+    private final CondBoostEntry condBoostEntry;
 
     private final float boostFactor;
 
@@ -24,10 +24,10 @@ public class CondBoostFactorFunction extends ScoreFunction {
 
     private float boost;
 
-    CondBoostFactorFunction(List<CondBoostEntry> condBoostEntryList,
+    CondBoostFactorFunction(CondBoostEntry condBoostEntry,
                                    float defaultBoost, float boostFactor, Modifier modifierType) {
         super(CombineFunction.MULT);
-        this.condBoostEntryList = condBoostEntryList;
+        this.condBoostEntry = condBoostEntry;
         this.defaultBoost = defaultBoost;
         this.boostFactor = boostFactor;
         this.modifier = modifierType;
@@ -40,14 +40,12 @@ public class CondBoostFactorFunction extends ScoreFunction {
             public double score(int docId, float subQueryScore) {
                 System.err.println("score");
                 boost = defaultBoost;
-                for (CondBoostEntry entry : condBoostEntryList) {
-                    SortedBinaryDocValues values = entry.ifd.load(ctx).getBytesValues();
-                    values.setDocument(docId);
-                    for (int i = 0; i < values.count(); i++) {
-                        if (entry.fieldValue.equals(values.valueAt(i).utf8ToString())) {
-                            boost = boost * entry.boost; // multiply boosts by default
-                            System.err.println("entry.fieldvalue=" + entry.fieldValue + " boost=" + boost);
-                        }
+                SortedBinaryDocValues values = condBoostEntry.ifd.load(ctx).getBytesValues();
+                values.setDocument(docId);
+                for (int i = 0; i < values.count(); i++) {
+                    if (condBoostEntry.fieldValueList.contains(values.valueAt(i).utf8ToString())) {
+                        boost = boost * condBoostEntry.boost; // multiply boosts by default
+                        System.err.println("entry.fieldvalue=" + condBoostEntry.fieldValueList + " boost=" + boost);
                     }
                 }
                 double val = boost * boostFactor;
