@@ -1,6 +1,3 @@
-group ='org.xbib.elasticsearch.plugin'
-version = '2.3.1.0'
-
 println "Host: " + java.net.InetAddress.getLocalHost()
 println "Gradle: " + gradle.gradleVersion + " JVM: " + org.gradle.internal.jvm.Jvm.current() + " Groovy: " + GroovySystem.getVersion()
 println "Build: group: '${project.group}', name: '${project.name}', version: '${project.version}'"

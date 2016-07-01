@@ -6,13 +6,17 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.lucene.search.function.CombineFunction;
 import org.elasticsearch.common.lucene.search.function.LeafScoreFunction;
 import org.elasticsearch.common.lucene.search.function.ScoreFunction;
+import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
+import org.elasticsearch.index.mapper.MappedFieldType;
+import org.elasticsearch.index.query.QueryParseContext;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Locale;
 
 public class CondBoostFactorFunction extends ScoreFunction {
+
+    private final QueryParseContext queryParseContext;
 
     private final CondBoostEntry condBoostEntry;
 
@@ -24,9 +28,10 @@ public class CondBoostFactorFunction extends ScoreFunction {
 
     private float boost;
 
-    CondBoostFactorFunction(CondBoostEntry condBoostEntry,
-                                   float defaultBoost, float boostFactor, Modifier modifierType) {
+    CondBoostFactorFunction(QueryParseContext queryParseContext, CondBoostEntry condBoostEntry,
+             float defaultBoost, float boostFactor, Modifier modifierType) {
         super(CombineFunction.MULT);
+        this.queryParseContext = queryParseContext;
         this.condBoostEntry = condBoostEntry;
         this.defaultBoost = defaultBoost;
         this.boostFactor = boostFactor;
@@ -38,19 +43,22 @@ public class CondBoostFactorFunction extends ScoreFunction {
         return new LeafScoreFunction() {
             @Override
             public double score(int docId, float subQueryScore) {
-                System.err.println("score");
                 boost = defaultBoost;
-                SortedBinaryDocValues values = condBoostEntry.ifd.load(ctx).getBytesValues();
+                String currentFieldName = condBoostEntry.fieldName;
+                MappedFieldType mappedFieldType = queryParseContext.mapperService().fullName(currentFieldName);
+                if (mappedFieldType == null) {
+                    throw new ElasticsearchException("unable to find field [" + currentFieldName + "]");
+                }
+                IndexFieldData indexFieldData = queryParseContext.getForField(mappedFieldType);
+                SortedBinaryDocValues values = indexFieldData.load(ctx).getBytesValues();
                 values.setDocument(docId);
                 for (int i = 0; i < values.count(); i++) {
                     if (condBoostEntry.fieldValueList.contains(values.valueAt(i).utf8ToString())) {
                         boost = boost * condBoostEntry.boost; // multiply boosts by default
-                        System.err.println("entry.fieldvalue=" + condBoostEntry.fieldValueList + " boost=" + boost);
                     }
                 }
                 double val = boost * boostFactor;
                 double result = modifier.apply(val);
-                System.err.println("result=" + result);
                 if (Double.isNaN(result) || Double.isInfinite(result)) {
                     throw new ElasticsearchException("result of field modification [" + modifier.toString() +
                             "(" + val + ")] must be a number");
